@@ -1,0 +1,9 @@
+openai>=1.40
+tiktoken>=0.7
+numpy>=1.26
+chromadb>=0.5
+langgraph>=0.2
+langgraph-checkpoint-sqlite>=2.0
+langchain-openai>=0.2
+mcp>=1.2   # server.py supports both 1.x (FastMCP) and 2.x (MCPServer)
+python-dotenv>=1.0

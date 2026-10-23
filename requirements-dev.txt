@@ -1,0 +1,3 @@
+-r requirements.txt
+-r requirements-anthropic.txt   # so the Claude-port offline tests run in CI
+pytest>=8.0

@@ -1,0 +1,4 @@
+# Optional: the standalone Claude + Voyage port (common/llm_anthropic.py).
+# Not needed to run the OpenAI labs; install only to run or test the port.
+anthropic>=1.0
+voyageai>=0.3

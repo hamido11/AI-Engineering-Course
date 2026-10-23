@@ -1,0 +1,17 @@
+.env
+.venv/
+venv/
+.DS_Store
+__pycache__/
+.pytest_cache/
+*.pyc
+# generated at runtime by the labs
+.chroma/
+cost_ledger.csv
+checkpoints.db
+traces.jsonl
+labs/12-evaluation/baseline.json
+labs/10-agents/sandbox/
+# PDF build artefacts (fonts are fetched by docs/source/fetch_fonts.sh)
+docs/source/fonts/*.ttf
+docs/source/course.html
