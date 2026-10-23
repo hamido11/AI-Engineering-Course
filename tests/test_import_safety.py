@@ -25,3 +25,12 @@ def test_import_makes_no_api_call(script, monkeypatch):
 def test_no_lab_script_matches_pytest_collection_patterns():
     bad = [s for s in SCRIPTS if s.endswith("_test.py") or s.split("/")[-1].startswith("test_")]
     assert not bad, f"pytest would collect these live-API scripts: {bad}"
+
+
+def test_llm_anthropic_import_creates_no_client():
+    """The Claude port is import-safe too: importing it builds no client, so it needs no key."""
+    import importlib
+
+    import common.llm_anthropic as m
+    importlib.reload(m)                      # re-run the module top level with a clean slate
+    assert m._client is None and m._voyage is None

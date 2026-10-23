@@ -14,9 +14,10 @@ Install:
 Configure (all via environment / .env, nothing hardcoded):
     ANTHROPIC_API_KEY   chat credential   (or run `ant auth login`; see NOTES)
     VOYAGE_API_KEY      embedding credential
-    CHAT_MODEL          chat model id        (default: claude-opus-5-5 -> pick a current id)
-    EMBED_MODEL         Voyage model id      (default: voyage-4; voyage-4-large = higher quality)
-    JUDGE_MODEL         grader model, Lab 12 (default: same as CHAT_MODEL)
+    ANTHROPIC_MODEL      chat model id       (default: claude-haiku-5-5, the cheapest Claude)
+    ANTHROPIC_MAX_TOKENS max output tokens   (default: 4096; required by the API, always sent)
+    VOYAGE_MODEL        Voyage model id      (default: voyage-4; voyage-4-large = higher quality)
+    JUDGE_MODEL         grader model, Lab 12 (default: same as ANTHROPIC_MODEL)
     EFFORT              low|medium|high|xhigh|max (optional; lower = cheaper on simple calls)
     PRICE_IN_PER_M      $ per 1M chat input tokens   (optional; ledger shows $0 until set)
     PRICE_OUT_PER_M     $ per 1M chat output tokens  (optional)
@@ -34,10 +35,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 ROOT = Path(__file__).resolve().parents[1]
-CHAT_MODEL = os.getenv("CHAT_MODEL", "claude-opus-5-5")
-EMBED_MODEL = os.getenv("EMBED_MODEL", "voyage-4")
-JUDGE_MODEL = os.getenv("JUDGE_MODEL", CHAT_MODEL)
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-haiku-5-5")  # cheapest Claude; fine for learning
+VOYAGE_MODEL = os.getenv("VOYAGE_MODEL", "voyage-4")   # separate from the OpenAI labs' EMBED_MODEL
+JUDGE_MODEL = os.getenv("JUDGE_MODEL", ANTHROPIC_MODEL)
 EFFORT = os.getenv("EFFORT")                 # None -> let the model use its default
+MAX_TOKENS = int(os.getenv("ANTHROPIC_MAX_TOKENS", "4096"))   # required by the API; always sent
+TRANSIENT = (429, 500, 502, 503, 504, 529)   # retryable statuses (529 = Anthropic overloaded)
 
 _client = None          # Anthropic client (tests/callers can inject a fake here)
 _voyage = None          # Voyage client
@@ -51,7 +54,7 @@ def get_client():
     global _client
     if _client is None:
         import anthropic
-        _client = anthropic.Anthropic(max_retries=4)   # SDK does the exponential backoff
+        _client = anthropic.Anthropic(max_retries=0)   # our ask() loop owns retries/backoff
     return _client
 
 
@@ -138,23 +141,28 @@ def _refusal(message):
 
 
 def ask(messages, model=None, temperature=None, stream=False, tools=None,
-        max_tokens=4096):
-    """Single entry point: Claude Messages API with a cost ledger and optional streaming.
+        max_tokens=None, max_retries=4):
+    """Single entry point: Claude Messages API with retries, a cost ledger, optional streaming.
 
     Returns the text, or (when `tools` is given) the full Message so callers can read its
-    `tool_use` blocks. Unlike the OpenAI wrapper, retries/backoff are handled by the SDK
-    (max_retries on the client), so there is no hand-rolled loop here.
+    native `tool_use` blocks.
 
-    `temperature` defaults to None: current Claude models (e.g. Opus 5.5) run thinking and
-    reject a custom temperature with a 400. If you pass one and hit that, we retry once
-    without it -- same spirit as the OpenAI wrapper.
+    Retries mirror common/llm.py's ask(): exponential backoff on transient statuses
+    (429, 5xx, and 529/overloaded -- see TRANSIENT). The loop is driven here, and the client
+    is built with max_retries=0, so the behaviour is explicit and testable offline.
+
+    `temperature` defaults to None (not sent). Anthropic's range is 0-1, so a value above 1.0
+    is clamped (Lab 02 sweeps to 1.2). Current thinking models may reject a custom temperature
+    outright with a 400; on that we retry once without it -- same spirit as the OpenAI wrapper.
     """
-    import anthropic
     client = get_client()
     system, convo = _split_system(messages)
-
+    if temperature is not None:
+        temperature = min(temperature, 1.0)             # Anthropic caps temperature at 1.0
+    delay, attempt = 1.0, 0
     while True:
-        kwargs = {"model": model or CHAT_MODEL, "max_tokens": max_tokens, "messages": convo}
+        kwargs = {"model": model or ANTHROPIC_MODEL,
+                  "max_tokens": max_tokens or MAX_TOKENS, "messages": convo}
         if system:
             kwargs["system"] = system
         if EFFORT:
@@ -171,9 +179,15 @@ def ask(messages, model=None, temperature=None, stream=False, tools=None,
             if resp.stop_reason == "refusal":
                 return resp if tools else _refusal(resp)
             return resp if tools else _text(resp)
-        except anthropic.BadRequestError as e:
-            if temperature is not None and "temperature" in str(e).lower():
+        except Exception as e:
+            code = getattr(e, "status_code", None)
+            if code == 400 and temperature is not None and "temperature" in str(e).lower():
                 temperature = None                      # retry once without it
+                continue
+            if code in TRANSIENT and attempt < max_retries:
+                time.sleep(delay)
+                delay *= 2
+                attempt += 1
                 continue
             raise
 
@@ -185,8 +199,8 @@ def embed(texts, model=None, input_type=None):
     embedding a search query: Voyage encodes each side differently and retrieval improves.
     (The OpenAI wrapper had no such knob -- this is a small, real upgrade.)
     """
-    result = get_voyage().embed(list(texts), model=model or EMBED_MODEL, input_type=input_type)
-    _log_cost(model or EMBED_MODEL, result.total_tokens, 0,
+    result = get_voyage().embed(list(texts), model=model or VOYAGE_MODEL, input_type=input_type)
+    _log_cost(model or VOYAGE_MODEL, result.total_tokens, 0,
               price_in_env="PRICE_EMBED_PER_M", price_out_env="PRICE_EMBED_PER_M")
     return result.embeddings
 
@@ -235,11 +249,11 @@ if __name__ == "__main__":
 #    langchain-anthropic) -- the graph itself is unchanged.
 #
 # 3. Embeddings are a different provider and model, so the vectors are not comparable to the
-#    OpenAI index. Rebuild it: EMBED_MODEL=voyage-4 python labs/06-vector-db/reindex.py
+#    OpenAI index. Rebuild it: VOYAGE_MODEL=voyage-4 python labs/06-vector-db/reindex.py
 #    (and reindex.py stamps embed_model into metadata, so old/new chunks won't be mixed).
 #
 # 4. Auth: if ANTHROPIC_API_KEY is unset, the zero-arg client still works after `ant auth login`.
 #
-# 5. Refusals: Opus 5.5 can stop with stop_reason='refusal' (returned here as a readable
+# 5. Refusals: Claude models can stop with stop_reason='refusal' (returned here as a readable
 #    string). For automatic recovery, Anthropic offers server-side `fallbacks` (beta).
 # ---------------------------------------------------------------------------

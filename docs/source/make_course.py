@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Build the course PDF:   sh fetch_fonts.sh && python make_course.py
-Optional: REPO_URL=https://github.com/you/ai-engineering-labs python make_course.py   (stamps the link on cover/closing)
+Optional: REPO_URL=https://github.com/hamido11/AI-Engineering-Course python make_course.py   (stamps the link on cover/closing)
 Requires wkhtmltopdf (0.12.6) on PATH."""
 import subprocess
 import sys
