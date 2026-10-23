@@ -8,7 +8,7 @@ python make_course.py    # needs wkhtmltopdf 0.12.6 on PATH; writes ../AI-Engine
 python roadmap.py        # regenerates ../../assets/roadmap.png
 
 # optional: stamp your repo URL on the cover and closing page
-REPO_URL=https://github.com/<you>/ai-engineering-labs python make_course.py
+REPO_URL=https://github.com/hamido11/AI-Engineering-Course python make_course.py
 ```
 
 Known quirk: wkhtmltopdf's WebKit mis-scales fixed `mm`/`px` widths (~77%), so pages use `width:100%`.

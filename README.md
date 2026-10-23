@@ -23,7 +23,7 @@ Skip a layer and the next one stops making sense.
 ## Quick start
 
 ```bash
-git clone <this-repo> && cd ai-engineering-labs
+git clone https://github.com/hamido11/AI-Engineering-Course.git && cd AI-Engineering-Course
 python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env                                    # add OPENAI_API_KEY and set CHAT_MODEL
