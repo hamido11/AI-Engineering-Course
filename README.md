@@ -38,9 +38,14 @@ Every script runs from any directory. Developed and tested on Python 3.12.
 > The labs make small API calls; `cost_ledger.csv` shows exactly what you've spent.
 
 > **Optional — run it on Claude.** `common/llm_anthropic.py` is a standalone Claude + Voyage
-> port of the Lab-04 wrapper (`pip install -r requirements-anthropic.txt`; set `ANTHROPIC_API_KEY`
-> and `VOYAGE_API_KEY`). It's a reference implementation — the NOTES at the bottom of that file
-> explain what wiring it into every lab would take.
+> port of the Lab-04 wrapper (`pip install -r requirements-anthropic.txt`; set `ANTHROPIC_API_KEY`,
+> `VOYAGE_API_KEY`, and optionally `ANTHROPIC_MODEL`, default `claude-opus-5-5`). Tested with
+> anthropic 2.1.0 and voyageai 0.5.0. It's a reference implementation — the NOTES at the bottom of
+> that file explain what wiring it into every lab would take.
+>
+> **After switching providers, rebuild the index:** `python labs/06-vector-db/reindex.py`. OpenAI and
+> Voyage embeddings have different dimensions, so a stale index silently returns wrong results. Lab 02's
+> temperature sweep (1.2) is also clamped to Anthropic's maximum of 1.0.
 
 ## The labs
 
