@@ -14,7 +14,7 @@ Install:
 Configure (all via environment / .env, nothing hardcoded):
     ANTHROPIC_API_KEY   chat credential   (or run `ant auth login`; see NOTES)
     VOYAGE_API_KEY      embedding credential
-    ANTHROPIC_MODEL      chat model id       (default: claude-opus-5-5 -> pick a current id)
+    ANTHROPIC_MODEL      chat model id       (default: claude-haiku-5-5, the cheapest Claude)
     ANTHROPIC_MAX_TOKENS max output tokens   (default: 4096; required by the API, always sent)
     EMBED_MODEL         Voyage model id      (default: voyage-4; voyage-4-large = higher quality)
     JUDGE_MODEL         grader model, Lab 12 (default: same as ANTHROPIC_MODEL)
@@ -35,7 +35,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 ROOT = Path(__file__).resolve().parents[1]
-ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-opus-5-5")
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-haiku-5-5")  # cheapest Claude; fine for learning
 EMBED_MODEL = os.getenv("EMBED_MODEL", "voyage-4")
 JUDGE_MODEL = os.getenv("JUDGE_MODEL", ANTHROPIC_MODEL)
 EFFORT = os.getenv("EFFORT")                 # None -> let the model use its default
@@ -254,6 +254,6 @@ if __name__ == "__main__":
 #
 # 4. Auth: if ANTHROPIC_API_KEY is unset, the zero-arg client still works after `ant auth login`.
 #
-# 5. Refusals: Opus 5.5 can stop with stop_reason='refusal' (returned here as a readable
+# 5. Refusals: Claude models can stop with stop_reason='refusal' (returned here as a readable
 #    string). For automatic recovery, Anthropic offers server-side `fallbacks` (beta).
 # ---------------------------------------------------------------------------
