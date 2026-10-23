@@ -39,7 +39,8 @@ Every script runs from any directory. Developed and tested on Python 3.12.
 
 > **Optional — run it on Claude.** `common/llm_anthropic.py` is a standalone Claude + Voyage
 > port of the Lab-04 wrapper (`pip install -r requirements-anthropic.txt`; set `ANTHROPIC_API_KEY`,
-> `VOYAGE_API_KEY`, and optionally `ANTHROPIC_MODEL`, default `claude-haiku-5-5`, the cheapest Claude). Tested with
+> `VOYAGE_API_KEY`, and optionally `ANTHROPIC_MODEL` (default `claude-haiku-5-5`, the cheapest Claude) and
+> `VOYAGE_MODEL` (default `voyage-4`)). Tested with
 > anthropic 2.1.0 and voyageai 0.5.0. It's a reference implementation — the NOTES at the bottom of
 > that file explain what wiring it into every lab would take.
 >

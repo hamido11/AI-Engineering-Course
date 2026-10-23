@@ -231,6 +231,6 @@ def test_embed_passes_input_type_and_logs_tokens(voy, monkeypatch):
     monkeypatch.setenv("PRICE_EMBED_PER_M", "1.0")
     vecs = la.embed(["alpha", "beta gamma"], input_type="document")
     assert len(vecs) == 2 and len(vecs[0]) == 4
-    assert voy.last["input_type"] == "document" and voy.last["model"] == la.EMBED_MODEL
+    assert voy.last["input_type"] == "document" and voy.last["model"] == la.VOYAGE_MODEL
     rows = list(csv.DictReader(open(la.ledger_path())))
-    assert rows[0]["model"] == la.EMBED_MODEL and rows[0]["tokens_in"] == "15"   # 5 + 10 chars
+    assert rows[0]["model"] == la.VOYAGE_MODEL and rows[0]["tokens_in"] == "15"   # 5 + 10 chars

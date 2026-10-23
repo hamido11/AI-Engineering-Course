@@ -16,7 +16,7 @@ Configure (all via environment / .env, nothing hardcoded):
     VOYAGE_API_KEY      embedding credential
     ANTHROPIC_MODEL      chat model id       (default: claude-haiku-5-5, the cheapest Claude)
     ANTHROPIC_MAX_TOKENS max output tokens   (default: 4096; required by the API, always sent)
-    EMBED_MODEL         Voyage model id      (default: voyage-4; voyage-4-large = higher quality)
+    VOYAGE_MODEL        Voyage model id      (default: voyage-4; voyage-4-large = higher quality)
     JUDGE_MODEL         grader model, Lab 12 (default: same as ANTHROPIC_MODEL)
     EFFORT              low|medium|high|xhigh|max (optional; lower = cheaper on simple calls)
     PRICE_IN_PER_M      $ per 1M chat input tokens   (optional; ledger shows $0 until set)
@@ -36,7 +36,7 @@ load_dotenv()
 
 ROOT = Path(__file__).resolve().parents[1]
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-haiku-5-5")  # cheapest Claude; fine for learning
-EMBED_MODEL = os.getenv("EMBED_MODEL", "voyage-4")
+VOYAGE_MODEL = os.getenv("VOYAGE_MODEL", "voyage-4")   # separate from the OpenAI labs' EMBED_MODEL
 JUDGE_MODEL = os.getenv("JUDGE_MODEL", ANTHROPIC_MODEL)
 EFFORT = os.getenv("EFFORT")                 # None -> let the model use its default
 MAX_TOKENS = int(os.getenv("ANTHROPIC_MAX_TOKENS", "4096"))   # required by the API; always sent
@@ -199,8 +199,8 @@ def embed(texts, model=None, input_type=None):
     embedding a search query: Voyage encodes each side differently and retrieval improves.
     (The OpenAI wrapper had no such knob -- this is a small, real upgrade.)
     """
-    result = get_voyage().embed(list(texts), model=model or EMBED_MODEL, input_type=input_type)
-    _log_cost(model or EMBED_MODEL, result.total_tokens, 0,
+    result = get_voyage().embed(list(texts), model=model or VOYAGE_MODEL, input_type=input_type)
+    _log_cost(model or VOYAGE_MODEL, result.total_tokens, 0,
               price_in_env="PRICE_EMBED_PER_M", price_out_env="PRICE_EMBED_PER_M")
     return result.embeddings
 
@@ -249,7 +249,7 @@ if __name__ == "__main__":
 #    langchain-anthropic) -- the graph itself is unchanged.
 #
 # 3. Embeddings are a different provider and model, so the vectors are not comparable to the
-#    OpenAI index. Rebuild it: EMBED_MODEL=voyage-4 python labs/06-vector-db/reindex.py
+#    OpenAI index. Rebuild it: VOYAGE_MODEL=voyage-4 python labs/06-vector-db/reindex.py
 #    (and reindex.py stamps embed_model into metadata, so old/new chunks won't be mixed).
 #
 # 4. Auth: if ANTHROPIC_API_KEY is unset, the zero-arg client still works after `ant auth login`.
