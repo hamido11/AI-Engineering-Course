@@ -37,6 +37,11 @@ Every script runs from any directory. Developed and tested on Python 3.12.
 > Optionally set `PRICE_IN_PER_M` / `PRICE_OUT_PER_M` from the pricing page so the cost ledger shows real dollars.
 > The labs make small API calls; `cost_ledger.csv` shows exactly what you've spent.
 
+> **Optional — run it on Claude.** `common/llm_anthropic.py` is a standalone Claude + Voyage
+> port of the Lab-04 wrapper (`pip install -r requirements-anthropic.txt`; set `ANTHROPIC_API_KEY`
+> and `VOYAGE_API_KEY`). It's a reference implementation — the NOTES at the bottom of that file
+> explain what wiring it into every lab would take.
+
 ## The labs
 
 | # | Module | You build | Run |
