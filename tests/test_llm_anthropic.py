@@ -1,20 +1,25 @@
 """Offline tests for the standalone Claude + Voyage port (common/llm_anthropic.py).
 
-Mirrors tests/test_llm.py, but against fake Anthropic / Voyage clients so no key or
-network is needed. The whole module is skipped unless both SDKs are installed
-(same convention as the mcp test), so it never breaks a minimal install."""
+Mirrors tests/test_llm.py, against fake clients so no key, network, or SDK is needed:
+the port's ask() is duck-typed on status_code and both clients are lazy, so these tests
+never import anthropic or voyageai."""
 import csv
 from types import SimpleNamespace
 
 import pytest
 
-anthropic = pytest.importorskip("anthropic")
-pytest.importorskip("voyageai")
-
-import common.llm_anthropic as la  # noqa: E402
+import common.llm_anthropic as la
 
 
 # ---------- fakes ----------
+class ApiError(Exception):
+    """Fake HTTP/transient error carrying a status_code, like tests/test_llm.py's HttpError."""
+
+    def __init__(self, status_code, msg="boom"):
+        super().__init__(msg)
+        self.status_code = status_code
+
+
 def message(text="OK", in_tok=10, out_tok=5, model="claude-test",
             stop_reason="end_turn", stop_details=None, content=None):
     """Mimic the slice of an Anthropic Message the port reads."""
@@ -66,8 +71,9 @@ class FakeVoyage:
 
 @pytest.fixture
 def anth(monkeypatch):
-    """Inject a fake Anthropic client and give each test a clean token counter."""
+    """Inject a fake Anthropic client, a clean token counter, and instant backoff."""
     monkeypatch.setattr(la, "_tokens_used", 0)
+    monkeypatch.setattr(la.time, "sleep", lambda s: None)      # make retry backoff instant
 
     def install(client):
         monkeypatch.setattr(la, "_client", client)
@@ -83,7 +89,7 @@ def voy(monkeypatch):
     return v
 
 
-# ---------- ask() ----------
+# ---------- ask(): request shaping ----------
 def test_ask_returns_text_splits_system_and_omits_optional_args(anth):
     client = anth(FakeAnthropic(create_fn=lambda **kw: message("hello world")))
     out = la.ask([{"role": "system", "content": "be nice"},
@@ -92,9 +98,16 @@ def test_ask_returns_text_splits_system_and_omits_optional_args(anth):
     kw = client.calls[-1]
     assert kw["system"] == "be nice"                       # system pulled into its own arg
     assert kw["messages"] == [{"role": "user", "content": "hi"}]
-    assert kw["model"] == la.CHAT_MODEL and "max_tokens" in kw
-    assert "temperature" not in kw                          # not sent by default (Claude 400s on it)
+    assert kw["model"] == la.ANTHROPIC_MODEL
+    assert kw["max_tokens"] == la.MAX_TOKENS                # always set, from env default
+    assert "temperature" not in kw                          # not sent by default
     assert "output_config" not in kw                        # no EFFORT set -> model default
+
+
+def test_max_tokens_is_configurable_and_always_present(anth):
+    client = anth(FakeAnthropic())
+    la.ask([{"role": "user", "content": "hi"}], max_tokens=256)
+    assert client.calls[-1]["max_tokens"] == 256
 
 
 def test_split_system_joins_multiple_and_keeps_order():
@@ -107,6 +120,76 @@ def test_split_system_joins_multiple_and_keeps_order():
     assert convo == [{"role": "user", "content": "u"}, {"role": "assistant", "content": "x"}]
 
 
+def test_effort_env_sets_output_config(anth, monkeypatch):
+    monkeypatch.setattr(la, "EFFORT", "low")
+    client = anth(FakeAnthropic())
+    la.ask([{"role": "user", "content": "hi"}])
+    assert client.calls[-1]["output_config"] == {"effort": "low"}
+
+
+# ---------- ask(): temperature ----------
+def test_temperature_clamped_to_one(anth):
+    client = anth(FakeAnthropic())
+    la.ask([{"role": "user", "content": "hi"}], temperature=1.2)   # Lab 02 sweeps to 1.2
+    assert client.calls[-1]["temperature"] == 1.0
+
+
+def test_temperature_400_retries_without_it(anth):
+    seen = []
+
+    def picky(**kw):
+        seen.append(dict(kw))
+        if "temperature" in kw:
+            raise ApiError(400, "Unsupported value: 'temperature' is not supported")
+        return message("fine")
+
+    anth(FakeAnthropic(create_fn=picky))
+    assert la.ask([{"role": "user", "content": "hi"}], temperature=0.2) == "fine"
+    assert "temperature" in seen[0] and "temperature" not in seen[1]
+
+
+# ---------- ask(): retries (mirror tests/test_llm.py) ----------
+def test_retries_survive_three_429s(anth):
+    n = {"calls": 0}
+
+    def flaky(**kw):
+        n["calls"] += 1
+        if n["calls"] <= 3:
+            raise ApiError(429)
+        return message("recovered")
+
+    anth(FakeAnthropic(create_fn=flaky))
+    assert la.ask([{"role": "user", "content": "hi"}]) == "recovered"
+    assert n["calls"] == 4
+
+
+def test_non_transient_error_is_not_retried(anth):
+    n = {"calls": 0}
+
+    def bad(**kw):
+        n["calls"] += 1
+        raise ApiError(401, "invalid api key")
+
+    anth(FakeAnthropic(create_fn=bad))
+    with pytest.raises(ApiError):
+        la.ask([{"role": "user", "content": "hi"}])
+    assert n["calls"] == 1
+
+
+def test_gives_up_after_max_retries_including_529(anth):
+    n = {"calls": 0}
+
+    def always_529(**kw):                # 529 = Anthropic overloaded, also transient
+        n["calls"] += 1
+        raise ApiError(529)
+
+    anth(FakeAnthropic(create_fn=always_529))
+    with pytest.raises(ApiError):
+        la.ask([{"role": "user", "content": "hi"}], max_retries=2)
+    assert n["calls"] == 3               # first try + 2 retries
+
+
+# ---------- ask(): accounting, streaming, refusal, tools ----------
 def test_ledger_and_token_counter(anth, monkeypatch):
     monkeypatch.setenv("PRICE_IN_PER_M", "1.0")
     monkeypatch.setenv("PRICE_OUT_PER_M", "2.0")
@@ -116,29 +199,6 @@ def test_ledger_and_token_counter(anth, monkeypatch):
     assert rows[0]["model"] == "m-test" and rows[0]["tokens_in"] == "100"
     assert float(rows[0]["usd"]) == pytest.approx(100 / 1e6 * 1.0 + 50 / 1e6 * 2.0)
     assert la.tokens_used() == 150
-
-
-def test_temperature_400_retries_without_it(anth):
-    import httpx2
-    seen = []
-
-    def picky(**kw):
-        seen.append(dict(kw))
-        if "temperature" in kw:
-            resp = httpx2.Response(400, request=httpx2.Request("POST", "https://api.anthropic.com/v1/messages"))
-            raise anthropic.BadRequestError("Unsupported value: 'temperature'", response=resp, body=None)
-        return message("fine")
-
-    anth(FakeAnthropic(create_fn=picky))
-    assert la.ask([{"role": "user", "content": "hi"}], temperature=0.2) == "fine"
-    assert "temperature" in seen[0] and "temperature" not in seen[1]
-
-
-def test_effort_env_sets_output_config(anth, monkeypatch):
-    monkeypatch.setattr(la, "EFFORT", "low")
-    client = anth(FakeAnthropic())
-    la.ask([{"role": "user", "content": "hi"}])
-    assert client.calls[-1]["output_config"] == {"effort": "low"}
 
 
 def test_streaming_concatenates_and_logs_usage(anth, capsys):
